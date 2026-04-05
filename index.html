@@ -218,10 +218,13 @@ textarea:focus{border-color:var(--g3);box-shadow:0 0 0 3px rgba(45,184,104,.15)}
  
     <!-- PRICE LIVE PREVIEW -->
     <div class="price-box" id="pricebox">
-      <div class="price-box-lbl">💵 ยอดรวมที่จะได้รับ</div>
+      <div class="price-box-lbl">💵 ยอดรวมสะสมที่จะได้รับ</div>
       <div>
         <span class="price-box-total" id="pb-total">0.00</span>
         <span class="price-box-unit">บาท</span>
+      </div>
+      <div id="pb-prev-row" style="display:none;margin-top:6px">
+        <span style="font-size:12px;color:rgba(255,255,255,.65)">ยอดก่อนหน้า <span id="pb-prev">0.00</span> บ. + รายการนี้ <span id="pb-cur">0.00</span> บ.</span>
       </div>
       <div class="price-box-rows" id="pb-rows">
         <div class="pb-empty">เลือกประเภทขยะและกรอกน้ำหนักเพื่อดูราคา</div>
@@ -301,8 +304,9 @@ textarea:focus{border-color:var(--g3);box-shadow:0 0 0 3px rgba(45,184,104,.15)}
           <div class="refnum" id="refnum">WD000000</div>
         </div>
         <div class="earn-box">
-          <div class="earn-lbl">💰 คุณจะได้รับ</div>
+          <div class="earn-lbl">💰 ยอดสะสมรวมทั้งหมด</div>
           <div class="earn-val" id="done-earn">0.00 บาท</div>
+          <div id="done-earn-sub" style="font-size:12px;color:rgba(255,255,255,.65);margin-top:4px"></div>
         </div>
         <div class="sum-list" id="done-sum"></div>
         <button class="btn btn-p" style="width:100%;margin-top:20px" onclick="reset()">ฝากรายการใหม่</button>
@@ -334,6 +338,7 @@ const WASTE_TYPES = [
 ];
  
 let photos = [];
+let sessionTotal = 0;
  
 /* ─ BUILD WASTE GRID ─ */
 function buildGrid(){
@@ -373,18 +378,29 @@ function toggleDetail(id){
  
 /* ─ LIVE PRICE CALCULATION ─ */
 function calcPrice(){
-  let total = 0;
+  let cur = 0;
   const lines = [];
   WASTE_TYPES.forEach(w => {
     const cb = el(w.id);
     if(!cb || !cb.checked) return;
     const wt = parseFloat(el('wt-'+w.id).value) || 0;
     const sub = wt * w.price;
-    total += sub;
+    cur += sub;
     lines.push({ emoji: w.emoji, name: w.name, wt, price: w.price, sub });
   });
  
-  el('pb-total').textContent = total.toFixed(2);
+  const grand = sessionTotal + cur;
+  el('pb-total').textContent = grand.toFixed(2);
+ 
+  // show breakdown row only when there is a previous session
+  const prevRow = el('pb-prev-row');
+  if(sessionTotal > 0){
+    prevRow.style.display = 'block';
+    el('pb-prev').textContent = sessionTotal.toFixed(2);
+    el('pb-cur').textContent  = cur.toFixed(2);
+  } else {
+    prevRow.style.display = 'none';
+  }
  
   const rowsEl = el('pb-rows');
   if(lines.length === 0){
@@ -466,7 +482,7 @@ function scrollTop(){ window.scrollTo({top:0,behavior:'smooth'}); }
 /* ─ VALIDATION ─ */
 function val(){
   const items = getSelectedSummary();
-  if(!items.length){ alert('กรุณาเลือกประเภทขยะอย่างน้อย 1 รายการค่ะ'); return false; }
+  if(!items.length){ alert('กรุณาเลือกประเภทขยะ'); return false; }
   const noWt = items.filter(i => i.wt <= 0);
   if(noWt.length){
     alert(`กรุณาระบุน้ำหนักของ: ${noWt.map(i=>i.name).join(', ')} ค่ะ`);
@@ -478,7 +494,7 @@ function val(){
 /* ─ PHOTOS ─ */
 function addPhotos(files){
   for(const f of files){
-    if(photos.length>=5){ alert('แนบได้สูงสุด 5 รูปค่ะ'); break; }
+    if(photos.length>=5){ alert('แนบได้สูงสุด 3 รูปค่ะ'); break; }
     if(f.size>5*1024*1024){ alert(`"${f.name}" ขนาดเกิน 5 MB ค่ะ`); continue; }
     const r=new FileReader();
     r.onload=e=>{ photos.push({name:f.name,type:f.type,dataUrl:e.target.result}); renderPrev(); };
@@ -489,7 +505,7 @@ function renderPrev(){
   el('prevs').innerHTML=photos.map((p,i)=>
     `<div class="prev"><img src="${p.dataUrl}" loading="lazy"><button class="del" onclick="delP(${i})">✕</button></div>`
   ).join('');
-  el('pcnt').textContent=photos.length?`${photos.length} / 5 รูป`:'';
+  el('pcnt').textContent=photos.length?`${photos.length} / 3 รูป`:'';
 }
 function delP(i){ photos.splice(i,1); renderPrev(); }
  
@@ -570,9 +586,13 @@ async function submit(){
     await new Promise(r=>setTimeout(r,500));
     el('ld').classList.remove('on');
  
+    // Accumulate session total
+    sessionTotal += total;
+ 
     // Success page
     el('refnum').textContent=ref;
-    el('done-earn').textContent=total.toFixed(2)+' บาท';
+    el('done-earn').textContent=sessionTotal.toFixed(2)+' บาท';
+    el('done-earn-sub').textContent=sessionTotal>total?'รายการนี้ '+total.toFixed(2)+' บ. · สะสม '+sessionTotal.toFixed(2)+' บ.':'';
  
     let doneHtml = [
       ['👤 ชื่อผู้ฝาก', payload.name || '-'],
